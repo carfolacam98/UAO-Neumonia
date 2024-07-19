@@ -5,27 +5,96 @@ from tkinter import *
 from tkinter import ttk, font, filedialog, Entry
 
 from tkinter.messagebox import askokcancel, showinfo, WARNING
-import getpass
+
 from PIL import ImageTk, Image
 import csv
 import tkcap
-import img2pdf
+
 import numpy as np
-import time
+
 import tensorflow as tf
+
 tf.compat.v1.disable_eager_execution()
 tf.compat.v1.experimental.output_all_intermediates(True)
 import cv2
 import pydicom
 from tensorflow.keras import backend as K
 
-def model_fun():
-    model=tf.keras.models.load_model('conv_MLP_84.h5')
+from abc import ABC, abstractmethod
+
+
+class PreprocessStrategy(ABC):
+    @abstractmethod
+    def preprocess(self, array):
+        pass
+
+
+class ReadFileStrategy(ABC):
+    @abstractmethod
+    def read_file(self, path):
+        pass
+
+
+class CLAHEPreprocessStrategy(PreprocessStrategy):
+    def preprocess(self, array):
+        array = cv2.resize(array, (512, 512))
+        array = cv2.cvtColor(array, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+        array = clahe.apply(array)
+        array = array / 255
+        array = np.expand_dims(array, axis=-1)
+        array = np.expand_dims(array, axis=0)
+        return array
+
+
+class DICOMReadFileStrategy(ReadFileStrategy):
+    def read_file(self, path):
+        img = pydicom.read_file(path)
+        img_array = img.pixel_array
+        img2show = Image.fromarray(img_array)
+        img2 = img_array.astype(float)
+        img2 = (np.maximum(img2, 0) / img2.max()) * 255.0
+        img2 = np.uint8(img2)
+        img_RGB = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
+        return img_RGB, img2show
+
+
+class JPGReadFileStrategy(ReadFileStrategy):
+    def read_file(self, path):
+        img = cv2.imread(path)
+        img_array = np.asarray(img)
+        img2show = Image.fromarray(img_array)
+        img2 = img_array.astype(float)
+        img2 = (np.maximum(img2, 0) / img2.max()) * 255.0
+        img2 = np.uint8(img2)
+        return img2, img2show
+
+
+class BacteriaLabels:
+    bacteria_label_mapping = {
+        0: 'bacteriana',
+        1: 'normal',
+        2: 'viral',
+    }
+
+
+class BacteriaPredictionLabels:
+    def __init__(self, entry):
+        self.entry = entry
+
+    def get_label(self):
+        if self.entry in BacteriaLabels.bacteria_label_mapping:
+            return BacteriaLabels.bacteria_label_mapping[self.entry]
+
+
+def read_model():
+    model = tf.keras.models.load_model('conv_MLP_84.h5')
     return model
 
-def grad_cam(array):
-    img = preprocess(array)
-    model = model_fun()
+
+def grad_cam(array, preprocess_strategy: PreprocessStrategy):
+    img = preprocess_strategy.preprocess(array)
+    model = read_model()
     preds = model.predict(img)
     argmax = np.argmax(preds[0])
     output = model.output[:, argmax]
@@ -52,56 +121,19 @@ def grad_cam(array):
     return superimposed_img[:, :, ::-1]
 
 
-def predict(array):
-    #   1. call function to pre-process image: it returns image in batch format
-    batch_array_img = preprocess(array)
-    #   2. call function to load model and predict: it returns predicted class and probability
-    model = model_fun()
-    # model_cnn = tf.keras.models.load_model('conv_MLP_84.h5')
+def predict(array, preprocess_strategy: PreprocessStrategy):
+    batch_array_img = preprocess_strategy.preprocess(array)
+    model = read_model()
     prediction = np.argmax(model.predict(batch_array_img))
     proba = np.max(model.predict(batch_array_img)) * 100
-    label = ""
-    if prediction == 0:
-        label = "bacteriana"
-    if prediction == 1:
-        label = "normal"
-    if prediction == 2:
-        label = "viral"
-    #   3. call function to generate Grad-CAM: it returns an image with a superimposed heatmap
-    heatmap = grad_cam(array)
-    return (label, proba, heatmap)
+    bacteria_prediction = BacteriaPredictionLabels(prediction)
+    label = bacteria_prediction.get_label()
+    heatmap = grad_cam(array, preprocess_strategy)
+    return label, proba, heatmap
 
 
-def read_dicom_file(path):
-    img = pydicom.read_file(path)
-    img_array = img.pixel_array
-    img2show = Image.fromarray(img_array)
-    img2 = img_array.astype(float)
-    img2 = (np.maximum(img2, 0) / img2.max()) * 255.0
-    img2 = np.uint8(img2)
-    img_RGB = cv2.cvtColor(img2, cv2.COLOR_GRAY2RGB)
-    return img_RGB, img2show
-
-
-def read_jpg_file(path):
-    img = cv2.imread(path)
-    img_array = np.asarray(img)
-    img2show = Image.fromarray(img_array)
-    img2 = img_array.astype(float)
-    img2 = (np.maximum(img2, 0) / img2.max()) * 255.0
-    img2 = np.uint8(img2)
-    return img2, img2show
-
-
-def preprocess(array):
-    array = cv2.resize(array, (512, 512))
-    array = cv2.cvtColor(array, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-    array = clahe.apply(array)
-    array = array / 255
-    array = np.expand_dims(array, axis=-1)
-    array = np.expand_dims(array, axis=0)
-    return array
+def read_file(path, read_file_strategy: ReadFileStrategy):
+    return read_file_strategy.read_file(path)
 
 
 class App:
@@ -199,7 +231,7 @@ class App:
             ),
         )
         if filepath:
-            self.array, img2show = read_dicom_file(filepath)
+            self.array, img2show = read_file(filepath)
             self.img1 = img2show.resize((250, 250), Image.Resampling.LANCZOS)
             self.img1 = ImageTk.PhotoImage(self.img1)
             self.text_img1.image_create(END, image=self.img1)
