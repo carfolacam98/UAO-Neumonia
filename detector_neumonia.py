@@ -35,6 +35,15 @@ class ReadFileStrategy(ABC):
         pass
 
 
+def read_model():
+    model = tf.keras.models.load_model('conv_MLP_84.h5')
+    return model
+
+
+def read_file(path, read_file_strategy: ReadFileStrategy):
+    return read_file_strategy.read_file(path)
+
+
 class CLAHEPreprocessStrategy(PreprocessStrategy):
     def preprocess(self, array):
         array = cv2.resize(array, (512, 512))
@@ -87,32 +96,17 @@ class BacteriaPredictionLabels:
             return BacteriaLabels.bacteria_label_mapping[self.entry]
 
 
-class Gradcam:
-    def read_model(self):
-        model = tf.keras.models.load_model('conv_MLP_84.h5')
-        return model
-
-    def __init__(self, array, preprocess_strategy: PreprocessStrategy):
-        self.img = preprocess_strategy.preprocess(array)
-        self.model = self.read_model()
+class ClassActivationHeatmap:
+    def __init__(self, array):
+        self.model = read_model()
         self.array = array
+        self.img = CLAHEPreprocessStrategy().preprocess(self.array)
 
-    def predict(self, img):
-        preds = self.model.predict(img)
-        argmax = np.argmax(preds[0])
-        output = self.model.output[:, argmax]
-        last_conv_layer = self.model.get_layer("conv10_thisone")
-        grads = K.gradients(output, last_conv_layer.output)[0]
-        pooled_grads = K.mean(grads, axis=(0, 1, 2))
-        iterate = K.function([self.model.input], [pooled_grads, last_conv_layer.output[0]])
-        pooled_grads_value, conv_layer_output_value = iterate(img)
-        for filters in range(64):
-            conv_layer_output_value[:, :, filters] *= pooled_grads_value[filters]
-        # creating the heatmap
+    def create_heatmap(self, conv_layer_output_value):
         heatmap = np.mean(conv_layer_output_value, axis=-1)
         heatmap = np.maximum(heatmap, 0)  # ReLU
         heatmap /= np.max(heatmap)  # normalize
-        heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[2]))
+        heatmap = cv2.resize(heatmap, (self.img.shape[1], self.img.shape[2]))
         heatmap = np.uint8(255 * heatmap)
         heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
         img2 = cv2.resize(self.array, (512, 512))
@@ -123,49 +117,15 @@ class Gradcam:
         superimposed_img = superimposed_img.astype(np.uint8)
         return superimposed_img[:, :, ::-1]
 
+    def predict(self):
+        batch_array_img = CLAHEPreprocessStrategy().preprocess(self.array)
+        model = read_model()
+        prediction = np.argmax(model.predict(batch_array_img))
+        proba = np.max(model.predict(batch_array_img)) * 100
+        label = BacteriaPredictionLabels(prediction).get_label()
+        heatmap = self.create_heatmap(self.array)
+        return label, proba, heatmap
 
-def grad_cam(array, preprocess_strategy: PreprocessStrategy):
-    img = preprocess_strategy.preprocess(array)
-    model = read_model()
-    preds = model.predict(img)
-    argmax = np.argmax(preds[0])
-    output = model.output[:, argmax]
-    last_conv_layer = model.get_layer("conv10_thisone")
-    grads = K.gradients(output, last_conv_layer.output)[0]
-    pooled_grads = K.mean(grads, axis=(0, 1, 2))
-    iterate = K.function([model.input], [pooled_grads, last_conv_layer.output[0]])
-    pooled_grads_value, conv_layer_output_value = iterate(img)
-    for filters in range(64):
-        conv_layer_output_value[:, :, filters] *= pooled_grads_value[filters]
-    # creating the heatmap
-    heatmap = np.mean(conv_layer_output_value, axis=-1)
-    heatmap = np.maximum(heatmap, 0)  # ReLU
-    heatmap /= np.max(heatmap)  # normalize
-    heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[2]))
-    heatmap = np.uint8(255 * heatmap)
-    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-    img2 = cv2.resize(array, (512, 512))
-    hif = 0.8
-    transparency = heatmap * hif
-    transparency = transparency.astype(np.uint8)
-    superimposed_img = cv2.add(transparency, img2)
-    superimposed_img = superimposed_img.astype(np.uint8)
-    return superimposed_img[:, :, ::-1]
-
-
-def predict(array, preprocess_strategy: PreprocessStrategy):
-    batch_array_img = preprocess_strategy.preprocess(array)
-    model = read_model()
-    prediction = np.argmax(model.predict(batch_array_img))
-    proba = np.max(model.predict(batch_array_img)) * 100
-    bacteria_prediction = BacteriaPredictionLabels(prediction)
-    label = bacteria_prediction.get_label()
-    heatmap = grad_cam(array, preprocess_strategy)
-    return label, proba, heatmap
-
-
-def read_file(path, read_file_strategy: ReadFileStrategy):
-    return read_file_strategy.read_file(path)
 
 
 class App:
@@ -263,14 +223,20 @@ class App:
             ),
         )
         if filepath:
-            self.array, img2show = read_file(filepath)
+            if filepath.endswith(".dcm"):
+                read_dicom_strategy = DICOMReadFileStrategy()
+                self.array, img2show = read_dicom_strategy.read_file(filepath)
+            else:
+                read_jpeg_strategy = JPGReadFileStrategy()
+                self.array, img2show = read_jpeg_strategy.read_file(filepath)
             self.img1 = img2show.resize((250, 250), Image.Resampling.LANCZOS)
             self.img1 = ImageTk.PhotoImage(self.img1)
             self.text_img1.image_create(END, image=self.img1)
             self.button1["state"] = "enabled"
 
     def run_model(self):
-        self.label, self.proba, self.heatmap = predict(self.array)
+        gradCam= ClassActivationHeatmap(self.array)
+        self.label, self.proba, self.heatmap = gradCam.predict()
         self.img2 = Image.fromarray(self.heatmap)
         self.img2 = self.img2.resize((250, 250), Image.Resampling.LANCZOS)
         self.img2 = ImageTk.PhotoImage(self.img2)
