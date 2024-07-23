@@ -169,8 +169,7 @@ class App:
 
 
 def main():
-    my_app = App()
-    return 0
+    App()
 
 
 if __name__ == "__main__":
