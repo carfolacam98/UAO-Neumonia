@@ -11,8 +11,14 @@ Deep Learning aplicado en el procesamiento de imágenes radiográficas de tórax
 Aplicación de una técnica de explicación llamada Grad-CAM para resaltar con un mapa de calor las regiones relevantes de la imagen de entrada.
 
 ---
+## Antes de iniciar
 
-## Uso de la herramienta:
+
+1. **Descargar modelo**: [Modelo](https://drive.google.com/file/d/1i0iJR7q1DtmzeH8QXeaCSiondVT3IKV6/view?usp=sharing).
+
+Verifica que el nombre del modelo descargado sea "" y situalo en la raiz del proyecto.
+
+## Uso local de la herramienta:
 
 A continuación le explicaremos cómo empezar a utilizarla.
 
@@ -70,8 +76,9 @@ Ejecutar APP
 ```bash
 python detector_neumonia.py
 ```
-Se abrira un modal que permite interactuar con la app, se recomienda usar los archivos de prueba de la carpeta root/tests/test_files, tambien puedes copiar imagenes de prueba desde tu ordenador local a el contenedor para poder hacer uso completo de la app
-Se recomienda borrar los reportes generados en la carpeta Reportes despues de detener el contenedor para que no hayan problemas en nuevas generaciones del archivo
+Se abrira un modal que permite interactuar con la app, se recomienda usar los archivos de prueba de la carpeta "root/tests/test_files", también puedes copiar imagenes de prueba desde tu ordenador local a el contenedor para poder hacer uso completo de la app.
+
+Se recomienda borrar los reportes generados en la carpeta Reportes despues de detener el contenedor para que no hayan problemas en nuevas generaciones del archivo.
 
 
 ---
