@@ -42,6 +42,38 @@ Uso de la Interfaz Gráfica:
 - Presione el botón 'PDF' para descargar un archivo PDF con la información desplegada en la interfaz
 - Presión el botón 'Borrar' si desea cargar una nueva imagen
 
+## Correr la App en Docker
+
+Para poder visualizar correctamente la herramienta, sigue estos pasos:
+
+### 1. Instalación de Xming
+
+1. **Instala Xming**: [Descargar Xming](https://sourceforge.net/projects/xming/) (solo para Windows).
+2. **Configura Xming**: Usa las opciones por defecto durante la instalación.
+
+### 2. Crear el Contenedor
+
+Construye y ejecuta el contenedor con los siguientes comandos:
+
+```bash
+docker build -t mi-imagen .
+```
+Correr el contenedor en modo interactivo:
+```bash
+docker run -it -e DISPLAY=host.docker.internal:0 -v /tmp/.X11-unix:/tmp/.X11-unix mi-imagen /bin/bash
+```
+Asegurate de tener aplicación basica de GUI
+```bash
+apt-get update && apt-get install -y x11-apps
+```
+Ejecutar APP
+```bash
+python detector_neumonia.py
+```
+Se abrira un modal que permite interactuar con la app, se recomienda usar los archivos de prueba de la carpeta root/tests/test_files, tambien puedes copiar imagenes de prueba desde tu ordenador local a el contenedor para poder hacer uso completo de la app
+Se recomienda borrar los reportes generados en la carpeta Reportes despues de detener el contenedor para que no hayan problemas en nuevas generaciones del archivo
+
+
 ---
 
 ## Arquitectura de archivos propuesta.
@@ -103,3 +135,4 @@ Grad-CAM realiza el cálculo del gradiente de la salida correspondiente a la cla
 
 Isabella Torres Revelo - https://github.com/isa-tr
 Nicolas Diaz Salazar - https://github.com/nicolasdiazsalazar
+

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from tkinter import *
-from tkinter import ttk, font, filedialog, Entry
+from tkinter import ttk, font, filedialog
 
 from tkinter.messagebox import askokcancel, showinfo, WARNING
 
@@ -12,7 +12,7 @@ import tkcap
 import integrator
 
 import tensorflow as tf
-
+import os
 import read_img
 
 tf.compat.v1.disable_eager_execution()
@@ -21,7 +21,9 @@ tf.compat.v1.experimental.output_all_intermediates(True)
 
 class App:
     def __init__(self):
+        self.img1 = None
         self.root = Tk()
+        self.output_folder = os.path.join(os.path.dirname(__file__), 'Reportes')
         self.root.title("Herramienta para la detección rápida de neumonía")
 
         #   BOLD FONT
@@ -146,11 +148,13 @@ class App:
 
     def create_pdf(self):
         cap = tkcap.CAP(self.root)
-        ID = "Reporte" + str(self.reportID) + ".jpg"
-        img = cap.capture(ID)
-        img = Image.open(ID)
+        jpg_filename = "Reporte" + str(self.reportID) + ".jpg"
+        jpg_path = os.path.join(self.output_folder, jpg_filename)
+        cap.capture(jpg_path)
+        img = Image.open(jpg_path)
         img = img.convert("RGB")
-        pdf_path = r"Reporte" + str(self.reportID) + ".pdf"
+        pdf_filename = r"Reporte" + str(self.reportID) + ".pdf"
+        pdf_path = os.path.join(self.output_folder, pdf_filename)
         img.save(pdf_path)
         self.reportID += 1
         showinfo(title="PDF", message="El PDF fue generado con éxito.")
